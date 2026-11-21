@@ -171,11 +171,19 @@
     }
     handL = l;
     handR = r;
+    // Expose the *current* hands globally. Re-injecting rebuilds the meshes but
+    // cannot replace the already-installed renderScene wrappers, so those
+    // wrappers must read the latest hands from here instead of a stale closure.
+    window.__vr_handL = l;
+    window.__vr_handR = r;
     return true;
   }
   // Try now; if the scene mesh isn't ready yet, retry each frame in the wrapper.
   buildHands();
-  window.__vr_handsReady = () => !!(handL && handR && handL.parent === cam && handR.parent === cam);
+  window.__vr_handsReady = () => {
+    const a = window.__vr_handL, b = window.__vr_handR;
+    return !!(a && b && a.parent === cam && b.parent === cam);
+  };
 
   // ---- SBS stereo renderer ----
   if (!e.__vr_origRenderScene) {
@@ -315,27 +323,41 @@
         );
         cam.updateMatrixWorld(true);
       }
-      // Update 3D hands from controller poses (head-local frame). Parented to
-      // the camera, so they automatically follow head + body yaw and get stereo.
-      if (!window.__vr_handsReady()) buildHands();
-      if (window.__vr_handsReady()) {
-        const applyHand = (mesh, data) => {
-          if (!mesh) return;
-          mesh.visible = !!window.__vr_handVisible && !!(data && data.valid);
-          if (data && data.valid && data.p && data.q) {
-            mesh.position.set(data.p[0],
-              data.p[1] + window.__vr_handOffsetY,
-              data.p[2] + window.__vr_handOffsetZ);
-            mesh.quaternion.set(data.q[0], data.q[1], data.q[2], data.q[3]);
-            mesh.scale.setScalar(window.__vr_handScale);
-          }
-        };
-        applyHand(handL, window.__vr_hands.left);
-        applyHand(handR, window.__vr_hands.right);
-      }
       return prev.apply(this, arguments);
     };
     e.__vr_pose_wrapped = true;
+  }
+
+  // Hands are driven by their own rAF loop instead of another renderScene
+  // wrapper. Re-injection rebuilds the meshes but leaves the old render wrappers
+  // in place; a single loop reading window.__vr_handL/R always picks up the
+  // current hands without stacking wrappers or depending on wrapper order.
+  if (!window.__vr_hands_loop) {
+    window.__vr_hands_loop = true;
+    const updateHands = () => {
+      try {
+        if (!window.__vr_handsReady()) buildHands();
+        if (window.__vr_handsReady()) {
+          const applyHand = (mesh, data) => {
+            if (!mesh) return;
+            mesh.visible = !!window.__vr_handVisible && !!(data && data.valid);
+            if (data && data.valid && data.p && data.q) {
+              mesh.position.set(data.p[0],
+                data.p[1] + window.__vr_handOffsetY,
+                data.p[2] + window.__vr_handOffsetZ);
+              mesh.quaternion.set(data.q[0], data.q[1], data.q[2], data.q[3]);
+              mesh.scale.setScalar(window.__vr_handScale);
+            }
+          };
+          applyHand(window.__vr_handL, window.__vr_hands.left);
+          applyHand(window.__vr_handR, window.__vr_hands.right);
+        }
+        if (typeof window.__vr_updateDomHands === 'function') window.__vr_updateDomHands();
+      } catch (err) {}
+      requestAnimationFrame(updateHands);
+    };
+    requestAnimationFrame(updateHands);
+  }
 
     // Multiplayer head turn: e.pose() is called twice each frame — once for the
     // local camera (me.setPose) and once for the network (lastSent/callbacks.move).
@@ -357,7 +379,6 @@
       };
       e.__vr_net_pose_wrapped = true;
     }
-  }
 
   // ---- Dual UI: clone UI siblings into left/right halves ----
   const stage = document.querySelector('[data-world-stage]');
@@ -367,17 +388,22 @@
     if (!style) {
       style = document.createElement('style');
       style.id = 'vr-ui-dual-style';
-      style.textContent = `
-        .vr-ui-dual > :not([data-world-stage]):not(.vr-ui-clone-layer) { opacity: 0 !important; }
-        .vr-ui-clone-layer { position: absolute; top: 0; bottom: 0; width: 50%; overflow: hidden; pointer-events: none; z-index: 100; }
-        .vr-ui-clone-layer button, .vr-ui-clone-layer [role="button"], .vr-ui-clone-layer a { pointer-events: auto !important; }
-        .vr-ui-clone-layer.vr-ui-left { left: 0; }
-        .vr-ui-clone-layer.vr-ui-right { left: 50%; }
-        .vr-ui-clone-layer .fixed { position: absolute !important; }
-        .vr-ui-clone-layer [style*="position: fixed"] { position: absolute !important; }
-      `;
       document.head.appendChild(style);
     }
+    // Always refresh: a previous injection may have left an older stylesheet
+    // here without the hand-marker rules.
+    style.textContent = `
+      .vr-ui-dual > :not([data-world-stage]):not(.vr-ui-clone-layer) { opacity: 0 !important; }
+      .vr-ui-clone-layer { position: absolute; top: 0; bottom: 0; width: 50%; overflow: hidden; pointer-events: none; z-index: 100; }
+      .vr-ui-clone-layer button, .vr-ui-clone-layer [role="button"], .vr-ui-clone-layer a { pointer-events: auto !important; }
+      .vr-ui-clone-layer.vr-ui-left { left: 0; }
+      .vr-ui-clone-layer.vr-ui-right { left: 50%; }
+      .vr-ui-clone-layer .fixed { position: absolute !important; }
+      .vr-ui-clone-layer [style*="position: fixed"] { position: absolute !important; }
+      .vr-dom-hand { position: absolute; width: 38px; height: 38px; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: 1000; border: 3px solid rgba(255,255,255,.85); box-shadow: 0 0 18px currentColor, inset 0 0 10px rgba(255,255,255,.5); }
+      .vr-dom-hand.left { background: #46c8ff; color: #46c8ff; }
+      .vr-dom-hand.right { background: #ff8a46; color: #ff8a46; }
+    `;
     let left = root.querySelector('.vr-ui-left');
     let right = root.querySelector('.vr-ui-right');
     if (!left || !right) {
@@ -389,6 +415,31 @@
       root.appendChild(right);
     }
     const getOriginals = () => [...root.children].filter(c => c !== stage && !c.classList.contains('vr-ui-clone-layer'));
+    // Visible hand markers live in the duplicated UI layers, so they are
+    // captured into BOTH eyes along with the rest of the overlay.
+    const handEls = [];
+    for (const layer of [left, right]) {
+      for (const side of ['left', 'right']) {
+        const el = document.createElement('div');
+        el.className = 'vr-dom-hand ' + side;
+        el.dataset.vrHand = side;
+        handEls.push({ el, layer });
+        layer.appendChild(el);
+      }
+    }
+    window.__vr_updateDomHands = () => {
+      const show = !!window.__vr_handVisible;
+      for (const entry of handEls) {
+        const el = entry.el;
+        const data = window.__vr_hands && window.__vr_hands[el.dataset.vrHand];
+        if (!show || !data || !data.valid || !data.p) { el.style.display = 'none'; continue; }
+        const x = Math.max(5, Math.min(95, 50 + data.p[0] * 80));
+        const y = Math.max(5, Math.min(95, 65 - (data.p[1] + 0.22) * 80));
+        el.style.display = 'block';
+        el.style.left = x + '%';
+        el.style.top = y + '%';
+      }
+    };
     const cloneUI = () => {
       const originals = getOriginals();
       for (const layer of [left, right]) {
@@ -400,6 +451,9 @@
           frag.appendChild(clone);
         }
         layer.replaceChildren(frag);
+        for (const entry of handEls) {
+          if (entry.layer === layer && entry.el.parentElement !== layer) layer.appendChild(entry.el);
+        }
       }
     };
     // Forward clicks from a half-width clone to the original full-width UI.
