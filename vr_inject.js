@@ -88,6 +88,12 @@
   // controller pose and are not scaled).
   window.__vr_handScale = typeof window.__vr_handScale === 'number'
     ? window.__vr_handScale : 1.5;
+  // Controller poses are usually ~60 degrees below the headset when the hands
+  // rest on your lap. Lift them into the normal field of view (visual only).
+  window.__vr_handOffsetY = typeof window.__vr_handOffsetY === 'number'
+    ? window.__vr_handOffsetY : 0.22;
+  window.__vr_handOffsetZ = typeof window.__vr_handOffsetZ === 'number'
+    ? window.__vr_handOffsetZ : -0.30;
   let handL = null, handR = null;
   // PerspectiveCamera -> Camera -> Object3D. A real Object3D is needed as the
   // hand container: Object3D.add() silently ignores plain objects.
@@ -317,7 +323,9 @@
           if (!mesh) return;
           mesh.visible = !!window.__vr_handVisible && !!(data && data.valid);
           if (data && data.valid && data.p && data.q) {
-            mesh.position.set(data.p[0], data.p[1], data.p[2]);
+            mesh.position.set(data.p[0],
+              data.p[1] + window.__vr_handOffsetY,
+              data.p[2] + window.__vr_handOffsetZ);
             mesh.quaternion.set(data.q[0], data.q[1], data.q[2], data.q[3]);
             mesh.scale.setScalar(window.__vr_handScale);
           }
