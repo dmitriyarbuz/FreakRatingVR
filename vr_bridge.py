@@ -116,7 +116,7 @@ class CDPInput:
         page = next((t for t in targets if t.get("type") == "page" and t.get("url", "").startswith("http")), None)
         if not page:
             raise RuntimeError("no game page target")
-        self.ws = ws_client.create_connection(page["webSocketDebuggerUrl"], timeout=5)
+        self.ws = ws_client.create_connection(page["webSocketDebuggerUrl"], timeout=5, suppress_origin=True)
         self.next_id = 1
         self.held = set()
         self.mouse_held = set()

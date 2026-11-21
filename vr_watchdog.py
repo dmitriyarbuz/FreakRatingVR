@@ -53,10 +53,11 @@ def vr_alive():
     if not page:
         return False, 'no page'
     url = page.get('url', '')
-    if '/world' == url.rstrip('/').split('/')[-1]:
+    last_segment = url.rstrip('/').split('/')[-1].split('?')[0].lower()
+    if last_segment == 'world':
         return False, 'no room (on /world)'
     try:
-        ws = websocket.create_connection(page['webSocketDebuggerUrl'], timeout=10)
+        ws = websocket.create_connection(page['webSocketDebuggerUrl'], timeout=10, suppress_origin=True)
     except Exception as e:
         return False, 'ws connect: %s' % e
     try:
@@ -83,7 +84,7 @@ def clear_wrappers():
     if not page:
         return
     try:
-        ws = websocket.create_connection(page['webSocketDebuggerUrl'], timeout=10)
+        ws = websocket.create_connection(page['webSocketDebuggerUrl'], timeout=10, suppress_origin=True)
     except Exception:
         return
     expr = ("(() => { const e=window.__vr_engine; if(!e) return 'no engine'; "
@@ -107,7 +108,7 @@ def discover_engine_url():
     if not page:
         return None
     try:
-        ws = websocket.create_connection(page['webSocketDebuggerUrl'], timeout=10)
+        ws = websocket.create_connection(page['webSocketDebuggerUrl'], timeout=10, suppress_origin=True)
     except Exception:
         return None
     expr = ("(async () => { const u = performance.getEntriesByType('resource').map(e => e.name); "

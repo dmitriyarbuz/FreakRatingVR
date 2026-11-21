@@ -11,7 +11,7 @@ if not pages:
     raise SystemExit('no page target')
 page = pages[0]
 print('page:', page.get('url'))
-ws = websocket.create_connection(page['webSocketDebuggerUrl'], timeout=30)
+ws = websocket.create_connection(page['webSocketDebuggerUrl'], timeout=30, suppress_origin=True)
 nid = 1
 sv.cdp_call(ws, 'Runtime.enable', {}, nid); nid += 1
 

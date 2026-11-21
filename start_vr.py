@@ -100,7 +100,7 @@ def main():
         return 1
     print("page:", page["url"])
 
-    ws = websocket.create_connection(page["webSocketDebuggerUrl"], timeout=30)
+    ws = websocket.create_connection(page["webSocketDebuggerUrl"], timeout=30, suppress_origin=True)
     next_id = 1
     cdp_call(ws, "Runtime.enable", {}, next_id); next_id += 1
 

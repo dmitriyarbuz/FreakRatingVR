@@ -9,7 +9,7 @@ def main():
         print('no page target')
         return
     ws_url = pages[0]['webSocketDebuggerUrl']
-    ws = websocket.create_connection(ws_url, timeout=30)
+    ws = websocket.create_connection(ws_url, timeout=30, suppress_origin=True)
     msg = {
         'id': 1,
         'method': 'Runtime.evaluate',

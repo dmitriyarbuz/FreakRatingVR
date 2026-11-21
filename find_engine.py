@@ -3,7 +3,7 @@ import json, os, requests, websocket, time
 port = os.environ.get('CDP_PORT', '9223')
 targets = requests.get(f'http://127.0.0.1:{port}/json', timeout=10).json()
 pages = [t for t in targets if t.get('type') == 'page']
-ws = websocket.create_connection(pages[0]['webSocketDebuggerUrl'], timeout=10)
+ws = websocket.create_connection(pages[0]['webSocketDebuggerUrl'], timeout=10, suppress_origin=True)
 
 nid = [0]
 queue = []
