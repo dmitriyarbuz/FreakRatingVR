@@ -104,9 +104,13 @@
       const oldAutoClearDepth = r.autoClearDepth;
       const oldAutoClearStencil = r.autoClearStencil;
       const right = oldCamPos.clone().set(1, 0, 0).applyQuaternion(cam.quaternion).normalize();
+      let leftEyePos = null;
+      let rightEyePos = null;
       const renderEye = (sign, x) => {
         e.view.eye.copy(oldEye).addScaledVector(right, sign * ipd / 2);
         cam.position.copy(e.view.eye);
+        const eyePos = { x: e.view.eye.x, y: e.view.eye.y, z: e.view.eye.z };
+        if (sign < 0) leftEyePos = eyePos; else rightEyePos = eyePos;
         cam.updateMatrixWorld(true);
         r.setViewport(x, 0, eyeW, H);
         r.setScissor(x, 0, eyeW, H);
@@ -123,6 +127,7 @@
         renderEye(1, eyeW);
         window.__vr_stats = { W, H, eyeW, ipd,
           eye: { x: oldEye.x, y: oldEye.y, z: oldEye.z },
+          leftEye: leftEyePos, rightEye: rightEyePos,
           aspect: cam.aspect, active: true };
       } finally {
         e.view.eye.copy(oldEye);
