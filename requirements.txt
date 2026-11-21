@@ -1,0 +1,11 @@
+openvr
+dxcam
+opencv-python
+numpy
+websockets
+websocket-client
+requests
+psutil
+pywin32
+glfw
+PyOpenGL

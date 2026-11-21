@@ -16,9 +16,11 @@ import sys
 import time
 import urllib.request
 
+import vr_config as cfg
+
 HERE = os.path.dirname(os.path.abspath(__file__))
-GAME_EXE = r"C:\freakrating\FreakRating.exe"
-CDP_PORT = 9223
+GAME_EXE = cfg.GAME_EXE
+CDP_PORT = cfg.CDP_PORT
 
 PY = sys.executable
 WATCHDOG = os.path.join(HERE, "vr_watchdog.py")
@@ -38,16 +40,9 @@ def game_with_cdp():
 
 
 def kill_watchdogs():
-    out = subprocess.check_output(
-        ["wmic", "process", "where", "name='python.exe'", "get", "CommandLine,ProcessId", "/format:csv"],
-        text=True, encoding="utf-8", errors="ignore",
-    )
-    for line in out.splitlines():
-        if "vr_watchdog.py" in line:
-            parts = line.rsplit(",", 1)
-            if len(parts) == 2 and parts[1].strip().isdigit():
-                subprocess.call(["taskkill", "/F", "/PID", parts[1].strip()],
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    killed = cfg.kill_python_scripts("vr_watchdog.py")
+    if killed:
+        print("stopped old watchdogs:", killed, flush=True)
 
 
 def main():
@@ -65,8 +60,7 @@ def main():
         subprocess.call(["taskkill", "/F", "/IM", "FreakRating.exe"],
                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(1)
-        subprocess.Popen([GAME_EXE, "--remote-debugging-port=%d" % CDP_PORT,
-                          "--remote-allow-origins=*"],
+        subprocess.Popen([GAME_EXE] + cfg.game_cdp_args(CDP_PORT),
                          cwd=os.path.dirname(GAME_EXE),
                          creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP)
 

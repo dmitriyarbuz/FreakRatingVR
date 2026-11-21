@@ -3,6 +3,7 @@ import json, os, sys, time, subprocess, requests, websocket
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import start_vr as sv
+import vr_config as cfg
 
 targets = requests.get(f'http://127.0.0.1:{sv.CDP_PORT}/json', timeout=10).json()
 pages = [t for t in targets if t.get('type') == 'page']
@@ -72,17 +73,9 @@ sv.cdp_call(ws, 'Emulation.setFocusEmulationEnabled', {'enabled': True}, nid); n
 ws.close()
 
 # restart bridge cleanly
-subprocess.call(['taskkill', '/F', '/IM', 'python.exe', '/FI', 'COMMANDLINE eq *vr_bridge.py*'],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-out = subprocess.check_output(
-    ['wmic', 'process', 'where', "name='python.exe'", 'get', 'CommandLine,ProcessId', '/format:csv'],
-    text=True, encoding='utf-8', errors='ignore')
-for line in out.splitlines():
-    if 'vr_bridge.py' in line:
-        parts = line.rsplit(',', 1)
-        if len(parts) == 2 and parts[1].strip().isdigit():
-            subprocess.call(['taskkill', '/F', '/PID', parts[1].strip()],
-                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+killed = cfg.kill_python_scripts('vr_bridge.py')
+if killed:
+    print('stopped old bridges:', killed, flush=True)
 time.sleep(1)
 # Restart the bridge via the wrapper so it picks up the standard resolution env
 # (VR_EYE_W/H etc. with 1080x845 defaults) instead of bare defaults.

@@ -29,14 +29,11 @@ from OpenGL.GL import *
 
 CDP_PORT = int(os.environ.get("CDP_PORT", "9223"))
 WS_PORT = 8777
-CAPTURE_PADDING = 0  # extra pixels trimmed from each side of the SBS split
 # Windowed capture size. Aspect is kept ~2.545 (matches the game page) so the
 # browser scales uniformly and the picture is not distorted. Smaller = faster.
 # Capture the maximized window and downscale the whole SBS frame once before splitting.
 EYE_W = int(os.environ.get("VR_EYE_W", "860"))
 EYE_H = int(os.environ.get("VR_EYE_H", "675"))
-BORDER_W, BORDER_H = 14, 37
-WINDOW_X, WINDOW_Y = 100, 100
 
 
 class Struct(ctypes.Structure):
@@ -61,16 +58,6 @@ def get_game_client_rect(hwnd):
     p.x, p.y = 0, 0
     user32.ClientToScreen(ctypes.c_void_p(hwnd), ctypes.byref(p))
     return (p.x, p.y, p.x + (r.right - r.left), p.y + (r.bottom - r.top))
-
-
-def find_game_window():
-    # FreakRating.exe main window
-    import subprocess
-    out = subprocess.check_output(
-        ["tasklist", "/FI", "IMAGENAME eq FreakRating.exe", "/FO", "CSV", "/NH"],
-        text=True, encoding="utf-8", errors="ignore",
-    )
-    return out
 
 
 def make_texture(w, h):

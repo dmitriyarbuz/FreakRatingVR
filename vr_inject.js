@@ -146,7 +146,9 @@
       const H = r.domElement.clientHeight || Math.round(r.domElement.height / r.getPixelRatio());
       if (!W || !H) return orig();
       const eyeW = W / 2;
-      const ipd = (typeof window.__vr_ipd === 'number' ? window.__vr_ipd : 0.064);
+      // Single source of truth: the runtime-tunable value from above.
+      // (The old 0.064 fallback here silently disagreed with window.__vr_ipd.)
+      const ipd = typeof window.__vr_ipd === 'number' ? window.__vr_ipd : 0.1;
       const oldEye = e.view.eye.clone();
       const oldCamPos = cam.position.clone();
       const oldAspect = cam.aspect;

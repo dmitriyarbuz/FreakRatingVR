@@ -14,9 +14,11 @@ import urllib.request
 
 import websocket
 
+import vr_config as cfg
+
 HERE = os.path.dirname(os.path.abspath(__file__))
-GAME_EXE = r"C:\freakrating\FreakRating.exe"
-CDP_PORT = 9223
+GAME_EXE = cfg.GAME_EXE
+CDP_PORT = cfg.CDP_PORT
 INJECT_JS = os.path.join(HERE, "vr_inject.js")
 BRIDGE_PY = os.path.join(HERE, "vr_bridge.py")
 
@@ -82,20 +84,15 @@ def main():
     # Optionally stop old instances.
     if os.environ.get("KEEP_RUNNING") != "1":
         subprocess.call(["taskkill", "/F", "/IM", "FreakRating.exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        out = subprocess.check_output(
-            ["wmic", "process", "where", "name='python.exe'", "get", "CommandLine,ProcessId", "/format:csv"],
-            text=True, encoding="utf-8", errors="ignore",
-        )
-        for line in out.splitlines():
-            if "vr_bridge.py" in line:
-                parts = line.rsplit(",", 1)
-                if len(parts) == 2 and parts[1].strip().isdigit():
-                    subprocess.call(["taskkill", "/F", "/PID", parts[1].strip()], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        killed = cfg.kill_python_scripts("vr_bridge.py")
+        if killed:
+            print("stopped old bridges:", killed, flush=True)
 
     print("starting game...")
-    subprocess.Popen([
-        GAME_EXE, "--remote-debugging-port=%d" % CDP_PORT, "--remote-allow-origins=*"
-    ], cwd=os.path.dirname(GAME_EXE))
+    subprocess.Popen(
+        [GAME_EXE] + cfg.game_cdp_args(CDP_PORT),
+        cwd=os.path.dirname(GAME_EXE),
+    )
 
     page = wait_for_page(CDP_PORT)
     if not page:

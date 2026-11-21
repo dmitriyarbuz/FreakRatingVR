@@ -38,10 +38,39 @@ VR-мод для FreakRating: стерео для каждого глаза че
 - `find_engine.py` — поиск хеша движка (нужен после обновления игры).
 - `cdp_eval.py` — выполнение JS на странице игры через CDP.
 - `restore_after_reboot.py` — восстановление после перезагрузки ПК.
+- `vr_config.py` — общие пути, флаги CDP и завершение старых процессов.
+- `requirements.txt`, `LICENSE` — зависимости и лицензия (MIT).
+
+## Настройка окружения
+
+Пути по умолчанию (`C:\freakrating\FreakRating.exe` и
+`D:\Steam\steamapps\common\SteamVR\bin\win64`) можно переопределить:
+
+| Переменная | По умолчанию | Что задаёт |
+| --- | --- | --- |
+| `VR_GAME_EXE` | `C:\freakrating\FreakRating.exe` | Путь к игре |
+| `VR_STEAMVR` | `D:\Steam\...\SteamVR\bin\win64` | Папка SteamVR |
+| `CDP_PORT` | `9223` | Порт remote debugging |
+| `VR_CDP_ALLOW_ORIGINS` | выкл. | `=1` разрешает WebSocket с других источников (только для локальной отладки; по умолчанию CDP слушает только `127.0.0.1` и чужие страницы не допускаются) |
+| `VR_WIN_W`, `VR_WIN_H` | `2293`, `900` | Размер клиентской области окна игры |
+| `VR_EYE_W`, `VR_EYE_H` | `860`, `675` | Разрешение текстуры одного глаза |
+| `VR_TARGET_FPS`, `VR_CAPTURE_FPS` | `0`, `0` | Ограничение частоты submit/захвата (0 = без ограничения) |
+| `VR_POSE_DELAY` | `1` | Кадр из истории поз для таймварпа |
+| `VR_TAG_POSE` | `1` | Помечать текстуры позой рендера (`0` = обычный submit) |
+| `VR_KEEP_FOCUS` | `0` | `=1` принудительно держать игру в фокусе |
+| `VR_WATCH_INTERVAL`, `VR_WATCH_COOLDOWN` | `10`, `30` | Проверки watchdog и пауза между переинъекциями |
+| `VR_LOG` | `vr_bridge_launcher.log` | Лог запуска bridge |
+| `VR_SYNTH` | `0` | Тестовый узор вместо захвата экрана |
+
+Внутри страницы можно менять `window.__vr_ipd` (по умолчанию `0.1`),
+`window.__vr_fov` (`120`), `window.__vr_smooth` (`0.15`) и
+`window.__vr_lead_ms` (`0`) прямо из консоли CDP.
 
 ## Использование
 
-1. Установить Python с модулями: `openvr`, `dxcam`, `opencv-python`, `numpy`, `websockets`, `requests`, `pywin32`, `psutil`.
+1. Установить зависимости: `pip install -r requirements.txt`
+   (список: `openvr`, `dxcam`, `opencv-python`, `numpy`, `websockets`,
+   `websocket-client`, `requests`, `psutil`, `pywin32`, `glfw`, `PyOpenGL`).
 2. Запустить SteamVR и стриминг (Virtual Desktop).
 3. `python launch_vr.py` — запуск игры + watchdog (рекомендуется). Либо вручную: `python start_vr.py`, затем `python run_vr_bridge.py`.
 4. Зайти в любую комнату в игре — watchdog сам включит VR-режим.

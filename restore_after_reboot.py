@@ -22,9 +22,11 @@ import sys
 import time
 import urllib.request
 
+import vr_config as cfg
+
 HERE = os.path.dirname(os.path.abspath(__file__))
-STEAMVR = r"D:\Steam\steamapps\common\SteamVR\bin\win64"
-CDP_PORT = 9223
+STEAMVR = cfg.STEAMVR_DIR
+CDP_PORT = cfg.CDP_PORT
 
 
 def tasklist():
