@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+*.log
+*.png
+*.jpg
+*.bak*
+.vscode/
+.idea/
+*.json.bak*
