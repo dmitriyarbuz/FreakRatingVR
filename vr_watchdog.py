@@ -23,6 +23,7 @@ import websocket
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import start_vr as sv
+import vr_config as cfg
 
 CHECK_INTERVAL = float(os.environ.get('VR_WATCH_INTERVAL', '10'))  # seconds between checks
 REINJECT_COOLDOWN = float(os.environ.get('VR_WATCH_COOLDOWN', '30'))  # min seconds between reinjects
@@ -136,8 +137,13 @@ def main():
             continue
 
         print('[%s] VR NOT alive: %s' % (time.strftime('%H:%M:%S'), reason), flush=True)
-        # In the lobby there is no world engine to hook; wait until a room is entered.
+        # In the lobby there is no world engine to hook. Stop any bridge left
+        # over from a previous room: it would keep submitting stale textures to
+        # the OpenVR compositor and make the whole headset stutter.
         if reason == 'no room (on /world)':
+            killed = cfg.kill_python_scripts('vr_bridge.py')
+            if killed:
+                print('  stopped stale bridge:', killed, flush=True)
             time.sleep(CHECK_INTERVAL)
             continue
         now = time.time()
