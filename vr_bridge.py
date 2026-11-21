@@ -135,12 +135,20 @@ class CDPInput:
 
     def key(self, name, code, vk, down):
         typ = "keyDown" if down else "keyUp"
+        # CDP does not infer modifier state from the key itself. Without this,
+        # keydown Shift arrives with event.shiftKey === false and games that
+        # check the modifier (sprint) ignore it.
+        modifier_bits = {"shift": 8, "ctrl": 2, "alt": 1, "meta": 4}
+        modifiers = 0
+        for held in self.held:
+            modifiers |= modifier_bits.get(held, 0)
         self.send("Input.dispatchKeyEvent", {
             "type": typ,
             "key": name,
             "code": code,
             "windowsVirtualKeyCode": vk,
             "nativeVirtualKeyCode": vk,
+            "modifiers": modifiers,
         })
 
     def set_held(self, name, spec, active):
@@ -484,6 +492,8 @@ def main():
     frames = 0
     submit_errors = 0
     last_key_check = 0.0
+    debug_buttons = os.environ.get("VR_DEBUG_BUTTONS") == "1"
+    last_buttons = {}
     menu_prev = False
     right_stick_prev = False
     grip_r_prev = False
@@ -611,7 +621,16 @@ def main():
                 # Touchpad reports the thumbstick on rAxis[0]
                 ax = state.rAxis[0].x
                 ay = state.rAxis[0].y
-                is_left = dev in (1, 3)
+                # Ask OpenVR which hand this controller is assigned to. Device
+                # indices differ between SteamVR/Pico Connect, so hardcoding
+                # 1/3 as "left" misclassifies controllers on some setups.
+                role = system.getControllerRoleForTrackedDeviceIndex(dev)
+                is_left = role == openvr.TrackedControllerRole_LeftHand
+                if debug_buttons and pressed != last_buttons.get(dev):
+                    bits = [i for i in range(64) if pressed & (1 << i)]
+                    print("dev %d role=%s buttons: 0x%X bits=%s" % (
+                        dev, role, pressed, bits), flush=True)
+                    last_buttons[dev] = pressed
 
                 # Controller pose relative to the head, expressed in head-local
                 # space, so the page can parent hands to the camera (see vr_inject.js).
