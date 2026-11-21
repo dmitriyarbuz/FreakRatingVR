@@ -84,8 +84,10 @@
   window.__vr_hands = window.__vr_hands || {};
   window.__vr_handVisible = typeof window.__vr_handVisible === 'number'
     ? window.__vr_handVisible : 1;
+  // Size multiplier for the hand meshes (positions always come from the
+  // controller pose and are not scaled).
   window.__vr_handScale = typeof window.__vr_handScale === 'number'
-    ? window.__vr_handScale : 1;
+    ? window.__vr_handScale : 1.5;
   let handL = null, handR = null;
   // PerspectiveCamera -> Camera -> Object3D. A real Object3D is needed as the
   // hand container: Object3D.add() silently ignores plain objects.
@@ -98,11 +100,17 @@
     if (handL && handR && handL.parent === cam && handR.parent === cam) return true;
     const scene = e.scene;
     if (!scene || typeof scene.traverse !== 'function') return false;
-    let sample = null, boxSample = null, Group = null;
+    // Drop hands left behind by earlier injections (they would otherwise pile
+    // up at the camera origin and clutter the view).
+    for (const o of cam.children.slice()) {
+      if (o.isGroup && o.children.length === 6 && o.children.every(c => c.isMesh)) cam.remove(o);
+    }
+    let sample = null, boxSample = null, Group = null, Basic = null;
     scene.traverse(o => {
       if (!sample && o.isMesh && o.material) sample = o;
       if (!boxSample && o.isMesh && o.geometry && o.geometry.type === 'BoxGeometry') boxSample = o;
       if (!Group && o.isGroup) Group = o.constructor;
+      if (!Basic && o.material && o.material.type === 'MeshBasicMaterial') Basic = o.material.constructor;
     });
     if (!sample) return false;
     const Mesh = sample.constructor;
@@ -116,8 +124,12 @@
     if (!Container) return false;
 
     const makeMat = (color) => {
-      const m = new Mat({ color });
-      if ('depthTest' in m) m.depthTest = true;
+      // Unlit material + toneMapped=false: the game's lighting/ACES mapping
+      // makes a lit material almost black, so the hands disappear.
+      const m = Basic ? new Basic({ color }) : new Mat({ color });
+      if ('toneMapped' in m) m.toneMapped = false;
+      if ('depthTest' in m) m.depthTest = false;
+      if ('depthWrite' in m) m.depthWrite = false;
       if ('transparent' in m) m.transparent = false;
       return m;
     };
@@ -139,6 +151,8 @@
       const thumb = box(0.02, 0.02, 0.055, mat, 0.055, 0, -0.03);
       thumb.rotation.y = -0.5;
       g.add(thumb);
+      g.renderOrder = 999;
+      g.children.forEach(c => { c.renderOrder = 999; c.frustumCulled = false; });
       cam.add(g);
       return g.parent === cam ? g : null;
     };
@@ -303,9 +317,9 @@
           if (!mesh) return;
           mesh.visible = !!window.__vr_handVisible && !!(data && data.valid);
           if (data && data.valid && data.p && data.q) {
-            const s = window.__vr_handScale;
-            mesh.position.set(data.p[0] * s, data.p[1] * s, data.p[2] * s);
+            mesh.position.set(data.p[0], data.p[1], data.p[2]);
             mesh.quaternion.set(data.q[0], data.q[1], data.q[2], data.q[3]);
+            mesh.scale.setScalar(window.__vr_handScale);
           }
         };
         applyHand(handL, window.__vr_hands.left);
