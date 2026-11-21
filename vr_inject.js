@@ -79,112 +79,6 @@
   window.__vr_poseHist = poseHist;
   window.__vr_qslerp = qslerp;
 
-  // ---- 3D hands that follow the real controllers ----
-  // Constructors are borrowed from an existing scene mesh (no global THREE).
-  window.__vr_hands = window.__vr_hands || {};
-  window.__vr_handVisible = typeof window.__vr_handVisible === 'number'
-    ? window.__vr_handVisible : 1;
-  // Size multiplier for the hand meshes (positions always come from the
-  // controller pose and are not scaled).
-  window.__vr_handScale = typeof window.__vr_handScale === 'number'
-    ? window.__vr_handScale : 1.5;
-  // Controller poses are usually ~60 degrees below the headset when the hands
-  // rest on your lap. Lift them into the normal field of view (visual only).
-  window.__vr_handOffsetY = typeof window.__vr_handOffsetY === 'number'
-    ? window.__vr_handOffsetY : 0.22;
-  window.__vr_handOffsetZ = typeof window.__vr_handOffsetZ === 'number'
-    ? window.__vr_handOffsetZ : -0.30;
-  let handL = null, handR = null;
-  // PerspectiveCamera -> Camera -> Object3D. A real Object3D is needed as the
-  // hand container: Object3D.add() silently ignores plain objects.
-  const object3D = (() => {
-    let p = Object.getPrototypeOf(cam);
-    p = p && Object.getPrototypeOf(p);
-    return p && p.constructor;
-  })();
-  function buildHands() {
-    if (handL && handR && handL.parent === cam && handR.parent === cam) return true;
-    const scene = e.scene;
-    if (!scene || typeof scene.traverse !== 'function') return false;
-    // Drop hands left behind by earlier injections (they would otherwise pile
-    // up at the camera origin and clutter the view).
-    for (const o of cam.children.slice()) {
-      if (o.isGroup && o.children.length === 6 && o.children.every(c => c.isMesh)) cam.remove(o);
-    }
-    let sample = null, boxSample = null, Group = null, Basic = null;
-    scene.traverse(o => {
-      if (!sample && o.isMesh && o.material) sample = o;
-      if (!boxSample && o.isMesh && o.geometry && o.geometry.type === 'BoxGeometry') boxSample = o;
-      if (!Group && o.isGroup) Group = o.constructor;
-      if (!Basic && o.material && o.material.type === 'MeshBasicMaterial') Basic = o.material.constructor;
-    });
-    if (!sample) return false;
-    const Mesh = sample.constructor;
-    // Reusing the first mesh's geometry constructor usually yields a bare
-    // BufferGeometry (no box vertices), so prefer an actual BoxGeometry.
-    const Box = boxSample ? boxSample.geometry.constructor
-      : (sample.geometry && sample.geometry.constructor);
-    const Mat = sample.material.constructor;
-    if (!Box || !Mat) return false;
-    const Container = Group || object3D;
-    if (!Container) return false;
-
-    const makeMat = (color) => {
-      // Unlit material + toneMapped=false: the game's lighting/ACES mapping
-      // makes a lit material almost black, so the hands disappear.
-      const m = Basic ? new Basic({ color }) : new Mat({ color });
-      if ('toneMapped' in m) m.toneMapped = false;
-      if ('depthTest' in m) m.depthTest = false;
-      if ('depthWrite' in m) m.depthWrite = false;
-      if ('transparent' in m) m.transparent = false;
-      return m;
-    };
-    const box = (w, h, d, mat, x, y, z) => {
-      const mesh = new Mesh(new Box(w, h, d), mat);
-      mesh.position.set(x, y, z);
-      return mesh;
-    };
-    const makeHand = (color) => {
-      const g = new Container();
-      const mat = makeMat(color);
-      // palm
-      g.add(box(0.09, 0.025, 0.11, mat, 0, 0, -0.02));
-      // four fingers pointing forward (-Z)
-      for (let i = 0; i < 4; i++) {
-        g.add(box(0.018, 0.02, 0.07, mat, -0.034 + i * 0.023, 0, -0.09));
-      }
-      // thumb off to the side
-      const thumb = box(0.02, 0.02, 0.055, mat, 0.055, 0, -0.03);
-      thumb.rotation.y = -0.5;
-      g.add(thumb);
-      g.renderOrder = 999;
-      g.children.forEach(c => { c.renderOrder = 999; c.frustumCulled = false; });
-      cam.add(g);
-      return g.parent === cam ? g : null;
-    };
-    const l = makeHand(0x46c8ff);
-    const r = makeHand(0xff8a46);
-    if (!l || !r) {
-      if (l) cam.remove(l);
-      if (r) cam.remove(r);
-      return false;
-    }
-    handL = l;
-    handR = r;
-    // Expose the *current* hands globally. Re-injecting rebuilds the meshes but
-    // cannot replace the already-installed renderScene wrappers, so those
-    // wrappers must read the latest hands from here instead of a stale closure.
-    window.__vr_handL = l;
-    window.__vr_handR = r;
-    return true;
-  }
-  // Try now; if the scene mesh isn't ready yet, retry each frame in the wrapper.
-  buildHands();
-  window.__vr_handsReady = () => {
-    const a = window.__vr_handL, b = window.__vr_handR;
-    return !!(a && b && a.parent === cam && b.parent === cam);
-  };
-
   // ---- SBS stereo renderer ----
   if (!e.__vr_origRenderScene) {
     e.__vr_origRenderScene = orig;
@@ -328,37 +222,6 @@
     e.__vr_pose_wrapped = true;
   }
 
-  // Hands are driven by their own rAF loop instead of another renderScene
-  // wrapper. Re-injection rebuilds the meshes but leaves the old render wrappers
-  // in place; a single loop reading window.__vr_handL/R always picks up the
-  // current hands without stacking wrappers or depending on wrapper order.
-  if (!window.__vr_hands_loop) {
-    window.__vr_hands_loop = true;
-    const updateHands = () => {
-      try {
-        if (!window.__vr_handsReady()) buildHands();
-        if (window.__vr_handsReady()) {
-          const applyHand = (mesh, data) => {
-            if (!mesh) return;
-            mesh.visible = !!window.__vr_handVisible && !!(data && data.valid);
-            if (data && data.valid && data.p && data.q) {
-              mesh.position.set(data.p[0],
-                data.p[1] + window.__vr_handOffsetY,
-                data.p[2] + window.__vr_handOffsetZ);
-              mesh.quaternion.set(data.q[0], data.q[1], data.q[2], data.q[3]);
-              mesh.scale.setScalar(window.__vr_handScale);
-            }
-          };
-          applyHand(window.__vr_handL, window.__vr_hands.left);
-          applyHand(window.__vr_handR, window.__vr_hands.right);
-        }
-        if (typeof window.__vr_updateDomHands === 'function') window.__vr_updateDomHands();
-      } catch (err) {}
-      requestAnimationFrame(updateHands);
-    };
-    requestAnimationFrame(updateHands);
-  }
-
     // Multiplayer head turn: e.pose() is called twice each frame — once for the
     // local camera (me.setPose) and once for the network (lastSent/callbacks.move).
     // Wrapping e.pose() would rotate the local camera sideways, so instead patch
@@ -391,7 +254,7 @@
       document.head.appendChild(style);
     }
     // Always refresh: a previous injection may have left an older stylesheet
-    // here without the hand-marker rules.
+    // here without the current rules.
     style.textContent = `
       .vr-ui-dual > :not([data-world-stage]):not(.vr-ui-clone-layer) { opacity: 0 !important; }
       .vr-ui-clone-layer { position: absolute; top: 0; bottom: 0; width: 50%; overflow: hidden; pointer-events: none; z-index: 100; }
@@ -400,9 +263,6 @@
       .vr-ui-clone-layer.vr-ui-right { left: 50%; }
       .vr-ui-clone-layer .fixed { position: absolute !important; }
       .vr-ui-clone-layer [style*="position: fixed"] { position: absolute !important; }
-      .vr-dom-hand { position: absolute; width: 38px; height: 38px; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: 1000; border: 3px solid rgba(255,255,255,.85); box-shadow: 0 0 18px currentColor, inset 0 0 10px rgba(255,255,255,.5); }
-      .vr-dom-hand.left { background: #46c8ff; color: #46c8ff; }
-      .vr-dom-hand.right { background: #ff8a46; color: #ff8a46; }
     `;
     let left = root.querySelector('.vr-ui-left');
     let right = root.querySelector('.vr-ui-right');
@@ -415,31 +275,6 @@
       root.appendChild(right);
     }
     const getOriginals = () => [...root.children].filter(c => c !== stage && !c.classList.contains('vr-ui-clone-layer'));
-    // Visible hand markers live in the duplicated UI layers, so they are
-    // captured into BOTH eyes along with the rest of the overlay.
-    const handEls = [];
-    for (const layer of [left, right]) {
-      for (const side of ['left', 'right']) {
-        const el = document.createElement('div');
-        el.className = 'vr-dom-hand ' + side;
-        el.dataset.vrHand = side;
-        handEls.push({ el, layer });
-        layer.appendChild(el);
-      }
-    }
-    window.__vr_updateDomHands = () => {
-      const show = !!window.__vr_handVisible;
-      for (const entry of handEls) {
-        const el = entry.el;
-        const data = window.__vr_hands && window.__vr_hands[el.dataset.vrHand];
-        if (!show || !data || !data.valid || !data.p) { el.style.display = 'none'; continue; }
-        const x = Math.max(5, Math.min(95, 50 + data.p[0] * 80));
-        const y = Math.max(5, Math.min(95, 65 - (data.p[1] + 0.22) * 80));
-        el.style.display = 'block';
-        el.style.left = x + '%';
-        el.style.top = y + '%';
-      }
-    };
     const cloneUI = () => {
       const originals = getOriginals();
       for (const layer of [left, right]) {
@@ -451,9 +286,6 @@
           frag.appendChild(clone);
         }
         layer.replaceChildren(frag);
-        for (const entry of handEls) {
-          if (entry.layer === layer && entry.el.parentElement !== layer) layer.appendChild(entry.el);
-        }
       }
     };
     // Forward clicks from a half-width clone to the original full-width UI.
@@ -506,7 +338,6 @@
           poseHist.push({ q: msg.pose.q.slice(), t: performance.now() });
           if (poseHist.length > 6) poseHist.shift();
         }
-        if (msg.hands) window.__vr_hands = msg.hands;
         if (msg.uiMode !== undefined && window.__vr_setUIMode) window.__vr_setUIMode(msg.uiMode);
       } catch (e) {}
     };
