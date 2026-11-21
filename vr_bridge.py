@@ -384,6 +384,15 @@ def main():
         user32.GetWindowThreadProcessId(h, ctypes.byref(pid))
         if not pid.value:
             return True
+        # Only the actual game process — a Chrome tab titled "FreakRatingVR"
+        # must not be mistaken for the game window.
+        try:
+            import psutil
+            pname = psutil.Process(pid.value).name().lower()
+        except Exception:
+            pname = ""
+        if pname != "freakrating.exe":
+            return True
         hwnd = h
         print("game window:", hwnd, repr(title), "pid", pid.value, flush=True)
         return False
@@ -398,15 +407,17 @@ def main():
     WIN_H = int(os.environ.get("VR_WIN_H", "900"))
     if WIN_W > 0 and WIN_H > 0:
         try:
+            user32.ShowWindow(ctypes.c_void_p(hwnd), 1)  # SW_SHOWNORMAL
+            time.sleep(0.2)
+            # Recompute borders AFTER ShowWindow: a restored window gets its
+            # title bar back, changing the client offset by ~30px.
             wr = Struct()
             user32.GetWindowRect(ctypes.c_void_p(hwnd), ctypes.byref(wr))
             cr = get_game_client_rect(hwnd)
             bw = (wr.right - wr.left) - (cr[2] - cr[0])
             bh = (wr.bottom - wr.top) - (cr[3] - cr[1])
-            user32.ShowWindow(ctypes.c_void_p(hwnd), 1)  # SW_SHOWNORMAL
-            time.sleep(0.2)
             user32.SetWindowPos(ctypes.c_void_p(hwnd), None, 100, 100,
-                                WIN_W + bw, WIN_H + bh, 0x40 | 0x4)
+                                WIN_W + bw, WIN_H + bh, 0x40 | 0x4 | 0x10)
         except Exception as exc:
             print("window resize failed:", exc, flush=True)
     else:
@@ -417,6 +428,7 @@ def main():
     width, height = right - left, bottom - top
     print("capture region:", rect, "size:", width, "x", height, flush=True)
     cam = dxcam.create(region=rect)
+    capture_rect = rect
 
     # --- OpenGL ---
     if not glfw.init():
@@ -496,6 +508,9 @@ def main():
     body_yaw = 0.0
     last_turn = time.time()
     TURN_SPEED = 3.5  # radians per second at full stick (right stick)
+    # By default DO NOT force the game to the foreground. Forcing focus steals
+    # the user's mouse cursor every 2s, so it is opt-in via VR_KEEP_FOCUS=1.
+    KEEP_FOCUS = os.environ.get("VR_KEEP_FOCUS", "0") == "1"
     last_focus = 0.0
     last_report = time.time()
     perf = {"poses": 0.0, "grab": 0.0, "resize": 0.0, "upload": 0.0, "submit": 0.0, "total": 0.0, "n": 0}
@@ -545,11 +560,37 @@ def main():
             if len(pose_hist) > 16:
                 pose_hist.pop(0)
 
-        # keep the game window in front so nothing occludes the captured frame
+        # keep the game window in front AND at the capture size so nothing
+        # occludes the frame and dxcam keeps grabbing the intended region.
         if t0 - last_focus > 2.0:
             last_focus = t0
+            if KEEP_FOCUS:
+                try:
+                    user32.SetForegroundWindow(ctypes.c_void_p(hwnd))
+                except Exception:
+                    pass
             try:
-                user32.SetForegroundWindow(ctypes.c_void_p(hwnd))
+                if WIN_W > 0 and WIN_H > 0:
+                    wr2 = Struct()
+                    user32.GetWindowRect(ctypes.c_void_p(hwnd), ctypes.byref(wr2))
+                    cr2 = get_game_client_rect(hwnd)
+                    bw2 = (wr2.right - wr2.left) - (cr2[2] - cr2[0])
+                    bh2 = (wr2.bottom - wr2.top) - (cr2[3] - cr2[1])
+                    if (cr2[2] - cr2[0]) != WIN_W or (cr2[3] - cr2[1]) != WIN_H:
+                        user32.ShowWindow(ctypes.c_void_p(hwnd), 1)
+                        user32.SetWindowPos(ctypes.c_void_p(hwnd), None, 100, 100,
+                                            WIN_W + bw2, WIN_H + bh2, 0x40 | 0x4 | 0x10)
+                        cr2 = get_game_client_rect(hwnd)
+                # Always re-sync the capture region with the live client rect.
+                # The window position can shift (title bar, restore) after startup.
+                if cr2 != capture_rect:
+                    try:
+                        cam.release()
+                    except Exception:
+                        pass
+                    cam = dxcam.create(region=cr2)
+                    capture_rect = cr2
+                    print("capture region updated:", cr2, flush=True)
             except Exception:
                 pass
 

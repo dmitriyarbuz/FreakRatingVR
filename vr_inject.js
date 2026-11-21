@@ -4,10 +4,33 @@
   if (!r || !e || !e.camera) return { ok: false, error: 'renderer or engine missing', r: !!r, e: !!e };
   const cam = e.camera;
 
+  // ---- Lock renderer pixelRatio so the game's auto-governor cannot lower it ----
+  // The game's dynamic-resolution governor re-applies a ratio between 0.75 and 1
+  // every frame to hit its 45 FPS target, which makes the canvas shrink and the
+  // VR image judder/blur. We clamp setPixelRatio to >= 1.25 and stop the governor.
+  try {
+    if (r.setPixelRatio && !r.__vr_spr_hooked) {
+      const _spr = r.setPixelRatio.bind(r);
+      r.setPixelRatio = function (v) { return _spr(Math.max(1.25, (typeof v === 'number' ? v : 1.25))); };
+      r.__vr_spr_hooked = true;
+    }
+    if (r.setPixelRatio) r.setPixelRatio(1.25);
+    if (e.graphics) {
+      e.graphics.autoOn = false;
+      const gov = e.graphics.governor;
+      if (gov) {
+        gov.ratio = 1.25;
+        if (!gov.__vr_frame_off) { gov.frame = function () {}; gov.__vr_frame_off = true; }
+      }
+    }
+  } catch (err) {}
+
   // ---- Constants exposed for live tuning ----
-  window.__vr_ipd = typeof window.__vr_ipd === 'number' ? window.__vr_ipd : 0.064;
-  window.__vr_fov = typeof window.__vr_fov === 'number' ? window.__vr_fov : 130;
+  window.__vr_ipd = typeof window.__vr_ipd === 'number' ? window.__vr_ipd : 0.1;
+  window.__vr_fov = typeof window.__vr_fov === 'number' ? window.__vr_fov : 120;
   window.__vr_aspect = 1.0;
+  window.__vr_smooth = typeof window.__vr_smooth === 'number' ? window.__vr_smooth : 0.15;
+  window.__vr_lead_ms = typeof window.__vr_lead_ms === 'number' ? window.__vr_lead_ms : 0;
 
   // ---- Force square projection and configurable FOV ----
   if (!cam.__vr_aspect_forced) {

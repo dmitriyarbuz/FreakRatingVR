@@ -84,7 +84,8 @@ for line in out.splitlines():
             subprocess.call(['taskkill', '/F', '/PID', parts[1].strip()],
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 time.sleep(1)
-log = open(os.path.join(HERE, 'vr_bridge_launcher.log'), 'w', encoding='utf-8')
-subprocess.Popen([sys.executable, sv.BRIDGE_PY, '3600'], stdout=log, stderr=subprocess.STDOUT,
+# Restart the bridge via the wrapper so it picks up the standard resolution env
+# (VR_EYE_W/H etc. with 1080x845 defaults) instead of bare defaults.
+subprocess.Popen([sys.executable, os.path.join(HERE, 'run_vr_bridge.py')],
                  cwd=HERE, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
 print('bridge restarted')
