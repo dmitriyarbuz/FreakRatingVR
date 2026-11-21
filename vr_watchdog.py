@@ -136,6 +136,10 @@ def main():
             continue
 
         print('[%s] VR NOT alive: %s' % (time.strftime('%H:%M:%S'), reason), flush=True)
+        # In the lobby there is no world engine to hook; wait until a room is entered.
+        if reason == 'no room (on /world)':
+            time.sleep(CHECK_INTERVAL)
+            continue
         now = time.time()
         if now - last_reinject < REINJECT_COOLDOWN:
             print('  cooldown active, skip', flush=True)
