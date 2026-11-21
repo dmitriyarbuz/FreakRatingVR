@@ -29,6 +29,9 @@ from OpenGL.GL import *
 
 CDP_PORT = int(os.environ.get("CDP_PORT", "9223"))
 WS_PORT = 8777
+# Left trigger pressed while the controller is close to the HMD acts as the
+# in-game zoom key (C) instead of right mouse button.
+HEAD_TRIGGER_DIST = float(os.environ.get("VR_HEAD_TRIGGER_DIST", "0.35"))
 # Windowed capture size. Aspect is kept ~2.545 (matches the game page) so the
 # browser scales uniformly and the picture is not distorted. Smaller = faster.
 # Capture the maximized window and downscale the whole SBS frame once before splitting.
@@ -192,6 +195,7 @@ KEY_SPECS = {
     "e": ("e", "KeyE", 69),
     "x": ("x", "KeyX", 88),
     "g": ("g", "KeyG", 71),
+    "c": ("c", "KeyC", 67),
     "f": ("f", "KeyF", 70),
     "1": ("1", "Digit1", 49),
     "2": ("2", "Digit2", 50),
@@ -493,6 +497,9 @@ def main():
     b_hold = False
     ui_mode = 0
     body_yaw = 0.0
+    cur_p = [0.0, 0.0, 0.0]
+    cur_q = [0.0, 0.0, 0.0, 1.0]
+    zoom_near_prev = False
     last_turn = time.time()
     TURN_SPEED = 3.5  # radians per second at full stick (right stick)
     # By default DO NOT force the game to the foreground. Forcing focus steals
@@ -589,6 +596,7 @@ def main():
             trig_r = trig_l = False
             grip_r = grip_l = False
             touch_r = touch_l = False
+            left_near_head = False
             for dev in (1, 2, 3, 4):
                 if system.getTrackedDeviceClass(dev) != openvr.TrackedDeviceClass_Controller:
                     continue
@@ -615,6 +623,15 @@ def main():
                     hand_poses["left" if is_left else "right"] = {
                         "p": rel_p, "q": rel_q, "valid": True,
                     }
+                    if is_left:
+                        # Hysteresis avoids flicker when the controller hovers
+                        # right at the distance threshold.
+                        dist = math.sqrt((cp[0] - cur_p[0]) ** 2 +
+                                         (cp[1] - cur_p[1]) ** 2 +
+                                         (cp[2] - cur_p[2]) ** 2)
+                        limit = HEAD_TRIGGER_DIST + (0.08 if zoom_near_prev else 0.0)
+                        if dist <= limit:
+                            left_near_head = True
                 else:
                     hand_poses["left" if is_left else "right"] = {"valid": False}
                 if is_left:
@@ -650,9 +667,13 @@ def main():
             cdp.set_held("space", KEY_SPECS["space"], a_right)
             # Left thumbstick click = sprint (Shift)
             cdp.set_held("shift", KEY_SPECS["shift"], touch_l)
-            # Triggers: right = LMB, left = RMB
+            # Left trigger near the head = zoom (C, held while trigger is held).
+            # Otherwise it stays the right mouse button.
+            zoom_held = trig_l and left_near_head
+            cdp.set_held("c", KEY_SPECS["c"], zoom_held)
+            cdp.set_mouse("right", trig_l and not left_near_head)
+            zoom_near_prev = left_near_head
             cdp.set_mouse("left", trig_r)
-            cdp.set_mouse("right", trig_l)
 
             # Right thumbstick click cycles UI: 0=dual, 1=original, 2=none
             if touch_r and not right_stick_prev:
