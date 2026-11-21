@@ -31,6 +31,14 @@
   window.__vr_aspect = 1.0;
   window.__vr_smooth = typeof window.__vr_smooth === 'number' ? window.__vr_smooth : 0.15;
   window.__vr_lead_ms = typeof window.__vr_lead_ms === 'number' ? window.__vr_lead_ms : 0;
+  // Local view yaw offset (radians, positive = counter-clockwise from above).
+  window.__vr_camYawOffset = typeof window.__vr_camYawOffset === 'number'
+    ? window.__vr_camYawOffset : 160 * Math.PI / 180;
+  // How strongly head pitch is relayed to other players (1 = 1:1).
+  window.__vr_netPitchGain = typeof window.__vr_netPitchGain === 'number'
+    ? window.__vr_netPitchGain : 1;
+  // Rebaselined on every injection so neutral head pose == game's current pitch.
+  window.__vr_netPitchBase = null;
 
   // ---- Force square projection and configurable FOV ----
   if (!cam.__vr_aspect_forced) {
@@ -204,6 +212,15 @@
           window.__vr_headYawAcc += dh;
         }
         window.__vr_headYawPrev = headYaw;
+        // Head pitch from the forward vector's Y component (yaw-independent).
+        // asin(2*(w*x - y*z)) gives 0 looking level, positive looking up.
+        let headPitch = Math.asin(Math.max(-1, Math.min(1,
+          2 * (q[3] * q[0] - q[1] * q[2]))));
+        if (window.__vr_netPitchBase == null) {
+          window.__vr_headPitchBase = headPitch;
+          window.__vr_netPitchBase = e.pitch || 0;
+        }
+        window.__vr_headPitch = headPitch;
         e.yaw = window.__vr_baseYaw + yaw;
         // Report the exact pose this frame was rendered from so the bridge can
         // tag the submitted texture with it (keeps timewarp reference correct).
@@ -212,8 +229,11 @@
           try { window.__vr_ws.send(JSON.stringify({ renderPose: window.__vr_render_pose })); } catch (e) {}
         }
         const x = q[0], y = q[1], z = q[2], w = q[3];
-        const sy = Math.sin(yaw * 0.5), cw = Math.cos(yaw * 0.5);
-        // qYaw (around world Y) * qHead
+        const yawOffset = typeof window.__vr_camYawOffset === 'number'
+          ? window.__vr_camYawOffset : 0;
+        const totalYaw = yaw + yawOffset;
+        const sy = Math.sin(totalYaw * 0.5), cw = Math.cos(totalYaw * 0.5);
+        // qYaw (around world Y, includes local view offset) * qHead
         cam.quaternion.set(
           cw * x + sy * z,
           cw * y + sy * w,
@@ -240,6 +260,17 @@
       e.callbacks.move = function (p) {
         if (p && p.length >= 4 && window.__vr_headYawAcc != null && window.__vr_baseYaw != null) {
           p[3] = p[3] + (window.__vr_headYawAcc - (window.__vr_headYawBase || 0));
+          // p[4] is pitch in the game's network pose. Relay head pitch relative
+          // to the pose at injection time so neutral head == game's own pitch.
+          if (p.length >= 5 && window.__vr_headPitch != null &&
+              window.__vr_headPitchBase != null && window.__vr_netPitchBase != null) {
+            const gain = typeof window.__vr_netPitchGain === 'number'
+              ? window.__vr_netPitchGain : 1;
+            let netPitch = window.__vr_netPitchBase +
+              (window.__vr_headPitch - window.__vr_headPitchBase) * gain;
+            netPitch = Math.max(-1.5, Math.min(1.5, netPitch));
+            p[4] = netPitch;
+          }
           // Keep lastSent in sync so identical-pose suppression still works.
           try { engine.lastSent = p.map(v => v.toFixed(2)).join(); } catch (err) {}
         }
