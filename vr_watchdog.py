@@ -137,6 +137,12 @@ def main():
             continue
 
         print('[%s] VR NOT alive: %s' % (time.strftime('%H:%M:%S'), reason), flush=True)
+        # No CDP page means the game was started without the debugging flags
+        # (or is closed). Reinjecting would only spawn a console window that
+        # instantly fails, so just wait quietly until the game comes back.
+        if reason == 'no page':
+            time.sleep(CHECK_INTERVAL)
+            continue
         # In the lobby there is no world engine to hook. Stop any bridge left
         # over from a previous room: it would keep submitting stale textures to
         # the OpenVR compositor and make the whole headset stutter.
@@ -162,7 +168,8 @@ def main():
         try:
             subprocess.call([sys.executable, os.path.join(HERE, 'reinject_full.py')],
                             cwd=HERE, env=env,
-                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120)
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120,
+                            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
         except Exception as e:
             print('  reinject failed:', e, flush=True)
         last_reinject = now
