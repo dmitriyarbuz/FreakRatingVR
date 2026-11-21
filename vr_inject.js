@@ -87,20 +87,33 @@
   window.__vr_handScale = typeof window.__vr_handScale === 'number'
     ? window.__vr_handScale : 1;
   let handL = null, handR = null;
+  // PerspectiveCamera -> Camera -> Object3D. A real Object3D is needed as the
+  // hand container: Object3D.add() silently ignores plain objects.
+  const object3D = (() => {
+    let p = Object.getPrototypeOf(cam);
+    p = p && Object.getPrototypeOf(p);
+    return p && p.constructor;
+  })();
   function buildHands() {
-    if (handL && handR) return true;
+    if (handL && handR && handL.parent === cam && handR.parent === cam) return true;
     const scene = e.scene;
     if (!scene || typeof scene.traverse !== 'function') return false;
-    let sample = null;
-    scene.traverse(o => { if (!sample && o.isMesh) sample = o; });
+    let sample = null, boxSample = null, Group = null;
+    scene.traverse(o => {
+      if (!sample && o.isMesh && o.material) sample = o;
+      if (!boxSample && o.isMesh && o.geometry && o.geometry.type === 'BoxGeometry') boxSample = o;
+      if (!Group && o.isGroup) Group = o.constructor;
+    });
     if (!sample) return false;
     const Mesh = sample.constructor;
-    const Box = sample.geometry ? sample.geometry.constructor : null;
-    const Mat = sample.material ? sample.material.constructor : null;
-    let Group = null;
-    scene.traverse(o => { if (!Group && o.isGroup) Group = o.constructor; });
+    // Reusing the first mesh's geometry constructor usually yields a bare
+    // BufferGeometry (no box vertices), so prefer an actual BoxGeometry.
+    const Box = boxSample ? boxSample.geometry.constructor
+      : (sample.geometry && sample.geometry.constructor);
+    const Mat = sample.material.constructor;
     if (!Box || !Mat) return false;
-    if (!Group) Group = function () { this.isGroup = true; this.children = []; };
+    const Container = Group || object3D;
+    if (!Container) return false;
 
     const makeMat = (color) => {
       const m = new Mat({ color });
@@ -114,7 +127,7 @@
       return mesh;
     };
     const makeHand = (color) => {
-      const g = new Group();
+      const g = new Container();
       const mat = makeMat(color);
       // palm
       g.add(box(0.09, 0.025, 0.11, mat, 0, 0, -0.02));
@@ -127,15 +140,22 @@
       thumb.rotation.y = -0.5;
       g.add(thumb);
       cam.add(g);
-      return g;
+      return g.parent === cam ? g : null;
     };
-    handL = makeHand(0x46c8ff);
-    handR = makeHand(0xff8a46);
+    const l = makeHand(0x46c8ff);
+    const r = makeHand(0xff8a46);
+    if (!l || !r) {
+      if (l) cam.remove(l);
+      if (r) cam.remove(r);
+      return false;
+    }
+    handL = l;
+    handR = r;
     return true;
   }
   // Try now; if the scene mesh isn't ready yet, retry each frame in the wrapper.
   buildHands();
-  window.__vr_handsReady = () => !!(handL && handR);
+  window.__vr_handsReady = () => !!(handL && handR && handL.parent === cam && handR.parent === cam);
 
   // ---- SBS stereo renderer ----
   if (!e.__vr_origRenderScene) {
@@ -277,8 +297,8 @@
       }
       // Update 3D hands from controller poses (head-local frame). Parented to
       // the camera, so they automatically follow head + body yaw and get stereo.
-      if (!handL && !handR) buildHands();
-      if (handL && handR) {
+      if (!window.__vr_handsReady()) buildHands();
+      if (window.__vr_handsReady()) {
         const applyHand = (mesh, data) => {
           if (!mesh) return;
           mesh.visible = !!window.__vr_handVisible && !!(data && data.valid);
