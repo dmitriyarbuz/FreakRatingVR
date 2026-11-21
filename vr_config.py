@@ -37,6 +37,8 @@ def kill_python_scripts(*script_names):
     killed = []
     for proc in psutil.process_iter(["pid", "name", "cmdline"]):
         try:
+            if proc.info.get("pid") == os.getpid():
+                continue
             name = (proc.info.get("name") or "").lower()
             if name not in ("python.exe", "pythonw.exe", "python", "python3"):
                 continue
