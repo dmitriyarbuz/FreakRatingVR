@@ -31,7 +31,7 @@ CDP_PORT = int(os.environ.get("CDP_PORT", "9223"))
 WS_PORT = 8777
 # Left trigger pressed while the controller is close to the HMD acts as the
 # in-game zoom key (C) instead of right mouse button.
-HEAD_TRIGGER_DIST = float(os.environ.get("VR_HEAD_TRIGGER_DIST", "0.35"))
+HEAD_TRIGGER_DIST = float(os.environ.get("VR_HEAD_TRIGGER_DIST", "0.22"))
 # Windowed capture size. Aspect is kept ~2.545 (matches the game page) so the
 # browser scales uniformly and the picture is not distorted. Smaller = faster.
 # Capture the maximized window and downscale the whole SBS frame once before splitting.
@@ -629,7 +629,7 @@ def main():
                         dist = math.sqrt((cp[0] - cur_p[0]) ** 2 +
                                          (cp[1] - cur_p[1]) ** 2 +
                                          (cp[2] - cur_p[2]) ** 2)
-                        limit = HEAD_TRIGGER_DIST + (0.08 if zoom_near_prev else 0.0)
+                        limit = HEAD_TRIGGER_DIST + (0.05 if zoom_near_prev else 0.0)
                         if dist <= limit:
                             left_near_head = True
                 else:
